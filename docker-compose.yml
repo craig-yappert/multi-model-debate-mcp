@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mattermost_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mmuser
+      POSTGRES_PASSWORD: mmuser_password
+      POSTGRES_DB: mattermost
+      TZ: 'UTC'
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - mattermost_db_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"  # Using 5434 to avoid conflict with your 5433
+    networks:
+      - mattermost_network
+
+  mattermost:
+    image: mattermost/mattermost-team-edition:latest
+    container_name: mattermost_app
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      TZ: 'UTC'
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://mmuser:mmuser_password@postgres:5432/mattermost?sslmode=disable&connect_timeout=10
+      MM_SERVICESETTINGS_SITEURL: http://localhost:8065
+      MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION: 'true'
+      MM_BOTSETTINGS_ENABLE: 'true'
+      MM_SERVICESETTINGS_ENABLEUSERTYPING: 'true'
+      MM_SERVICESETTINGS_ENABLEDEVELOPER: 'true'
+      MM_SERVICESETTINGS_ENABLEOAUTHSERVICEPROVIDER: 'true'
+      MM_SERVICESETTINGS_ENABLEPOSTUSERNAMEOVERRIDE: 'true'
+      MM_SERVICESETTINGS_ENABLEPOSTiconoverride: 'true'
+      MM_PLUGINSETTINGS_ENABLE: 'true'
+      MM_PLUGINSETTINGS_ENABLEUPLOADS: 'true'
+      MM_TEAMSETTINGS_MAXUSERSPERTEAM: 1000
+      MM_LOGSETTINGS_CONSOLELEVEL: DEBUG
+    volumes:
+      - mattermost_config:/mattermost/config
+      - mattermost_data:/mattermost/data
+      - mattermost_logs:/mattermost/logs
+      - mattermost_plugins:/mattermost/plugins
+      - mattermost_client_plugins:/mattermost/client/plugins
+      - mattermost_bleve_indexes:/mattermost/bleve-indexes
+    ports:
+      - "8065:8065"  # Main web interface - avoiding your 8080
+      - "8443:8443"  # HTTPS if needed
+    networks:
+      - mattermost_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8065/api/v4/system/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Multi-Model AI Bridge Service
+  ai_bridge:
+    build: .
+    container_name: multi_model_bridge
+    restart: unless-stopped
+    depends_on:
+      mattermost:
+        condition: service_healthy
+    environment:
+      - MATTERMOST_URL=http://mattermost:8065
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_RESEARCH_BOT_TOKEN=${CLAUDE_RESEARCH_BOT_TOKEN}
+      - KIRO_BOT_TOKEN=${KIRO_BOT_TOKEN}
+    networks:
+      - mattermost_network
+    volumes:
+      - ./wait-for-mattermost.sh:/app/wait-for-mattermost.sh:ro
+    command: ["bash", "/app/wait-for-mattermost.sh"]
+
+volumes:
+  mattermost_db_data:
+    driver: local
+  mattermost_config:
+    driver: local
+  mattermost_data:
+    driver: local
+  mattermost_logs:
+    driver: local
+  mattermost_plugins:
+    driver: local
+  mattermost_client_plugins:
+    driver: local
+  mattermost_bleve_indexes:
+    driver: local
+
+networks:
+  mattermost_network:
+    driver: bridge

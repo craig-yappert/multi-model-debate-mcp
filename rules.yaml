@@ -1,0 +1,66 @@
+# Multi-Model Debate Rules - Dynamic Configuration
+# This file can be updated without rebuilding containers
+
+version: "1.0"
+updated: "2025-08-25"
+updated_by: "Initial setup"
+
+# Core conversation behavior
+conversation:
+  context_history_length: 6  # Number of previous messages to include
+  max_response_length: 300   # Max tokens per response
+  response_delay_seconds: 3  # Delay between multiple bot responses
+  
+# Turn-taking and participation rules
+participation:
+  default_behavior: "all_respond"  # all_respond, round_robin, mention_only
+  mention_override: true           # @mentions always trigger specific bot
+  max_consecutive_responses: 2     # Prevent one bot from dominating
+  
+# Persona configuration
+personas:
+  claude-research:
+    role: "Research Analyst" 
+    focus: "Strategic analysis, long-term implications, systematic thinking"
+    style: "Analytical but conversational, asks probing questions"
+    behavior:
+      - "Reference previous points made by teammates"
+      - "Challenge assumptions constructively"
+      - "Focus on research and data-driven insights"
+      - "Keep responses under 3 sentences unless complex analysis needed"
+    
+  kiro:
+    role: "Execution Lead"
+    focus: "Practical implementation, constraints, actionable next steps" 
+    style: "Direct and reality-focused, solution-oriented"
+    behavior:
+      - "Ground discussions in practical constraints"
+      - "Identify implementation blockers early"
+      - "Focus on deliverable solutions"
+      - "Push for concrete next steps"
+
+# Context enhancement rules
+context:
+  include_user_messages: true
+  include_bot_responses: true
+  summarize_long_history: true  # Summarize if history gets too long
+  preserve_key_decisions: true  # Always keep important decisions in context
+  
+# Quality controls
+quality:
+  avoid_repetition: true        # Don't repeat recent points
+  require_new_insight: true     # Each response should add something new  
+  collaborative_tone: true      # Build on others' ideas
+  natural_language: true        # Conversational, not formal
+
+# Special behaviors
+special_modes:
+  debug_mode: false            # Include reasoning in responses
+  learning_mode: true          # Adapt behavior based on feedback
+  github_integration: false    # Pull in repo context (future feature)
+  
+# Rule evolution
+meta:
+  allow_rule_updates: true     # Rules can be modified during discussions
+  update_notification: true   # Announce when rules change
+  backup_previous: true       # Keep history of rule changes
