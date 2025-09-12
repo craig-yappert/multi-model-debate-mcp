@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "multi-model-debate": {
+      "command": "python",
+      "args": [
+        "src/mcp_server.py",
+        "--force-reload"
+      ],
+      "cwd": "C:\\Users\\cyapp\\multi-model-debate\\multi-model-debate-mcp",
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONPATH": "C:\\Users\\cyapp\\multi-model-debate\\multi-model-debate-mcp"
+      },
+      "disabled": false,
+      "autoApprove": ["contribute", "read_discussion"]
+    }
+  }
+}

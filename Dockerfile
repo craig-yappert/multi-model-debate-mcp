@@ -1,30 +1,33 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements first (for better Docker caching)
 COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY simple_bridge.py .
-COPY .env .
+# Copy source code
+COPY src/ ./src/
+COPY config/ ./config/
 
-# Create a health check script
-RUN echo '#!/bin/bash\ncurl -f http://mattermost:8065 || exit 1' > /app/healthcheck.sh && \
-    chmod +x /app/healthcheck.sh
+# Create non-root user for security
+RUN useradd -m -u 1000 mcpuser && chown -R mcpuser:mcpuser /app
+USER mcpuser
 
-# Add health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD /app/healthcheck.sh
+# Environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
-# Wait for Mattermost to be ready, then start the bridge
-CMD python -u simple_bridge.py
+# Expose port for MCP server (if needed for HTTP mode)
+EXPOSE 3000
+
+# Default command - run MCP server in stdio mode
+CMD ["python", "-m", "src.mcp_server"]

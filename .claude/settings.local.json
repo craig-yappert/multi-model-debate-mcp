@@ -1,9 +1,38 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker-compose:*)"
+      "Bash(docker-compose:*)",
+      "Bash(python:*)",
+      "Bash(docker build:*)",
+      "Read(/C:\\Users\\cyapp\\AppData\\Roaming\\Python\\Python313\\site-packages\\mcp/**)",
+      "Read(/C:\\Users\\cyapp\\AppData\\Roaming\\Python\\Python313\\site-packages\\mcp/**)",
+      "Read(/C:\\Users\\cyapp\\AppData\\Roaming\\Python\\Python313\\site-packages\\mcp/**)",
+      "mcp__multi-model-debate__contribute",
+      "Bash(git add:*)",
+      "mcp__multi-model-debate__get_conversation_context",
+      "mcp__multi-model-debate__read_discussion",
+      "Read(//c/Users/cyapp/AppData/Local/claude-cli-nodejs/Cache/**)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "mcp__multi-model-debate__subscribe_notifications"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "C:\\Users\\cyapp\\AppData\\Local\\claude-cli-nodejs\\Cache\\C--Users-cyapp-multi-model-debate-multi-model-debate-mcp\\mcp-logs-multi-model-debate"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Auto-subscribing to MCP notifications...'"
+          }
+        ]
+      }
+    ]
   }
 }

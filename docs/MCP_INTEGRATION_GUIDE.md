@@ -8,14 +8,14 @@ The Model Context Protocol (MCP) enables communication between IDEs and AI servi
 
 ```
 ┌─────────────┐     stdio      ┌──────────────┐     HTTP      ┌────────────┐
-│     IDE     │ <───────────> │  MCP Server  │ <──────────> │ Mattermost │
+│     IDE     │ <───────────>  │  MCP Server  │ <──────────>  │ Mattermost │
 │   (Client)  │   JSON-RPC     │   (Python)   │    REST API   │   Server   │
 └─────────────┘                └──────────────┘               └────────────┘
                                        │
                                        │ HTTP
                                        v
                                 ┌──────────────┐
-                                │ Anthropic API │
+                                │Anthropic API │
                                 └──────────────┘
 ```
 
