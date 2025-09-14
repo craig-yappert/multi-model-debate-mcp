@@ -244,4 +244,4 @@ MIT License - See LICENSE file for details.
 
 **Current Status**: ✅ **OPERATIONAL** - Ready for team collaboration with claude-research and kiro personas.
 
-For setup help: `docs/setup/` | For future plans: `docs/roadmap/` | Full docs: `docs/INDEX.md`
+For setup help: `docs/setup/` | For future plans: `docs/roadmap/`

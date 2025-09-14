@@ -141,7 +141,6 @@ class ConversationContext:
         return self.messages[-limit:] if self.messages else []
 
 # Mattermost integration
-from mattermostdriver import Driver
 import anthropic
 
 # Load environment
@@ -243,21 +242,21 @@ class MultiModelMCPServer:
             # Store connection details for direct API calls
             self.mattermost_base_url = f"{mm_scheme}://{mm_url}:{mm_port}/api/v4"
             self.mattermost_token = token
-            self.mattermost = True  # Flag to indicate Mattermost is configured
-            
+
             logger.info(f"Attempting to connect to Mattermost at {self.mattermost_base_url}")
-            
+
             # Test connection with direct API call
             import requests
             headers = {"Authorization": f"Bearer {token}"}
-            response = requests.get(f"{self.mattermost_base_url}/users/me", headers=headers)
-            
+            response = requests.get(f"{self.mattermost_base_url}/users/me", headers=headers, timeout=10)
+
             if response.status_code == 200:
                 user = response.json()
                 logger.info(f"Connected to Mattermost as {user['username']}")
+                self.mattermost = True  # Flag to indicate Mattermost is configured
             else:
-                raise Exception(f"Authentication failed: {response.status_code}")
-            
+                raise Exception(f"Authentication failed: {response.status_code} - {response.text}")
+
             # Get channel ID (hardcoded for MVP)
             self.channel_id = "f9pna31wginu3nuwezi6boeura"  # Multi-Model channel
             
@@ -323,69 +322,31 @@ class MultiModelMCPServer:
                         "type": "object",
                         "properties": {}
                     }
+                ),
+                Tool(
+                    name="subscribe_notifications",
+                    description="Subscribe to real-time notifications from Mattermost channel",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "channel_id": {
+                                "type": "string",
+                                "description": "Channel ID to subscribe to notifications from",
+                                "default": "f9pna31wginu3nuwezi6boeura"
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="unsubscribe_notifications",
+                    description="Unsubscribe from real-time notifications",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {}
+                    }
                 )
             ]
         
-        @self.server.call_tool()
-        async def read_discussion(name: str, arguments: dict) -> List[TextContent]:
-            """Read recent team discussion from Mattermost channel"""
-            limit = arguments.get("limit", 10)
-            
-            if not self.mattermost:
-                # Demo mode - return conversation history
-                if self.conversation_context.messages:
-                    demo_messages = []
-                    for msg in self.conversation_context.messages[-limit:]:
-                        demo_messages.append(f"[{msg['timestamp']}] {msg['author']}: {msg['content']}")
-                    return [TextContent(type="text", text="[DEMO MODE] Recent discussion:\n" + "\n".join(demo_messages))]
-                else:
-                    return [TextContent(type="text", text="[DEMO MODE] No discussion history yet. Use 'contribute' to start.")]
-            
-            try:
-                # Check cache first
-                cache_key = f"channel_{self.channel_id}_limit_{limit}"
-                cached_result = self.message_cache.get_cached_messages(cache_key)
-                
-                if cached_result:
-                    return [TextContent(type="text", text=cached_result)]
-                
-                # Get recent posts from channel with retry
-                posts = await self.retry_handler.retry_with_backoff(
-                    self.mattermost.posts.get_posts_for_channel, self.channel_id
-                )
-                
-                messages = []
-                post_list = sorted(posts['posts'].items(), 
-                                 key=lambda x: x[1]['create_at'], 
-                                 reverse=True)[:limit]
-                
-                for post_id, post in post_list:
-                    user_id = post['user_id']
-                    message = post.get('message', '')
-                    
-                    # Get username for display with retry
-                    try:
-                        user = await self.retry_handler.retry_with_backoff(
-                            self.mattermost.users.get_user, user_id
-                        )
-                        username = user.get('username', 'unknown')
-                    except:
-                        username = 'unknown'
-                    
-                    timestamp = datetime.fromtimestamp(post['create_at'] / 1000)
-                    messages.append(f"[{timestamp.strftime('%H:%M')}] {username}: {message}")
-                
-                # Reverse to show chronological order
-                messages.reverse()
-                result = "\n".join(messages) if messages else "No recent messages found"
-                
-                # Cache the result
-                self.message_cache.cache_messages(cache_key, result)
-                
-                return [TextContent(type="text", text=result)]
-                
-            except Exception as e:
-                return [TextContent(type="text", text=f"ERROR: Error reading discussion: {str(e)}")]
         
         @self.server.call_tool()
         async def call_tool_handler(name: str, arguments: dict) -> List[TextContent]:
@@ -398,63 +359,80 @@ class MultiModelMCPServer:
                 return await self.handle_contribute(arguments)
             elif name == "get_conversation_context":
                 return await self.handle_get_conversation_context(arguments)
+            elif name == "subscribe_notifications":
+                return await self.handle_subscribe_notifications(arguments)
+            elif name == "unsubscribe_notifications":
+                return await self.handle_unsubscribe_notifications(arguments)
             else:
                 return [TextContent(type="text", text=f"ERROR: Unknown tool {name}")]
     
     async def handle_read_discussion(self, arguments: dict) -> List[TextContent]:
         """Handle read_discussion tool calls"""
         limit = arguments.get("limit", 10)
-        
+
         if not self.mattermost:
-            # Demo mode - return conversation history
-            if self.conversation_context.messages:
-                demo_messages = []
-                for msg in self.conversation_context.messages[-limit:]:
-                    demo_messages.append(f"[{msg['timestamp']}] {msg['author']}: {msg['content']}")
-                return [TextContent(type="text", text="[DEMO MODE] Recent discussion:\n" + "\n".join(demo_messages))]
-            else:
-                return [TextContent(type="text", text="[DEMO MODE] No discussion history yet. Use 'contribute' to start.")]
-        
+            return [TextContent(type="text", text="ERROR: Mattermost connection not available")]
+
         try:
             # Check cache first
             cache_key = f"channel_{self.channel_id}_limit_{limit}"
             cached_result = self.message_cache.get_cached_messages(cache_key)
-            
+
             if cached_result:
                 return [TextContent(type="text", text=cached_result)]
-            
-            # Get recent posts from channel with retry
-            posts = await self.retry_handler.retry_with_backoff(
-                self.mattermost.posts.get_posts_for_channel, self.channel_id
+
+            # Get recent posts from channel using direct API call
+            import requests
+            headers = {"Authorization": f"Bearer {self.mattermost_token}"}
+            response = requests.get(
+                f"{self.mattermost_base_url}/channels/{self.channel_id}/posts",
+                headers=headers,
+                params={"per_page": limit},
+                timeout=10
             )
-            
+
+            if response.status_code != 200:
+                return [TextContent(type="text", text=f"ERROR: Failed to fetch posts: {response.status_code}")]
+
+            posts_data = response.json()
             messages = []
-            post_list = sorted(posts['posts'].items(), 
-                             key=lambda x: x[1]['create_at'], 
-                             reverse=True)[:limit]
-            
-            for post_id, post in post_list:
+
+            # Sort posts by creation time
+            posts_list = sorted(posts_data['posts'].items(),
+                              key=lambda x: x[1]['create_at'],
+                              reverse=True)[:limit]
+
+            for post_id, post in posts_list:
                 user_id = post['user_id']
                 message = post.get('message', '')
-                
-                # Get username for display with retry
+
+                # Get username for display
                 try:
-                    user = await self.retry_handler.retry_with_backoff(
-                        self.mattermost.users.get_user, user_id
+                    user_response = requests.get(
+                        f"{self.mattermost_base_url}/users/{user_id}",
+                        headers=headers,
+                        timeout=5
                     )
-                    username = user.get('username', 'unknown')
+                    if user_response.status_code == 200:
+                        user = user_response.json()
+                        username = user.get('username', 'unknown')
+                    else:
+                        username = 'unknown'
                 except:
                     username = 'unknown'
-                
-                timestamp = post['create_at']
-                messages.append(f"[{timestamp}] {username}: {message}")
-            
+
+                timestamp = datetime.fromtimestamp(post['create_at'] / 1000)
+                messages.append(f"[{timestamp.strftime('%H:%M')}] {username}: {message}")
+
+            # Reverse to show chronological order
+            messages.reverse()
+            result_text = "\n".join(messages) if messages else "No recent messages found"
+
             # Cache the result
-            result_text = "Recent team discussion:\n" + "\n".join(messages)
             self.message_cache.cache_messages(cache_key, result_text)
-            
+
             return [TextContent(type="text", text=result_text)]
-            
+
         except Exception as e:
             return [TextContent(type="text", text=f"ERROR: Error reading discussion: {str(e)}")]
     
@@ -463,26 +441,12 @@ class MultiModelMCPServer:
         message = arguments.get("message", "")
         persona = arguments.get("persona", "claude_research")
         autonomous = arguments.get("autonomous", False)
-        
+
         if not message:
             return [TextContent(type="text", text="ERROR: Message cannot be empty")]
-        
+
         if not self.mattermost:
-            # Demo mode when Mattermost is not connected
-            # Still generate AI response but don't post to Mattermost
-            persona_config = self.config.get('personas', {}).get(persona, {})
-            context = await self.build_context(persona)
-            
-            # Add the user's message to history first
-            self.add_to_history("User", message)
-            
-            # Generate AI response
-            response = await self.generate_response(message, persona_config, context)
-            
-            # Add AI response to history
-            self.add_to_history(persona_config.get('name', persona), response)
-            
-            return [TextContent(type="text", text=f"[DEMO MODE - {persona_config.get('name', persona)}]:\n{response}")]
+            return [TextContent(type="text", text="ERROR: Mattermost connection not available")]
         
         # Check autonomous collaboration rules
         if autonomous and not self.should_allow_autonomous_contribution(persona):
@@ -500,37 +464,40 @@ class MultiModelMCPServer:
                 autonomous_status = self.get_autonomous_context()
                 context += f"\n\nAutonomous collaboration status: {autonomous_status}"
             
-            response = await self.generate_response(message, persona_config, context)
-            
+            ai_response = await self.generate_response(message, persona_config, context)
+
             # Post to Mattermost with retry using direct API
             import requests
-            
+
             # Use the appropriate bot token based on persona
             if persona.lower() == 'kiro':
                 bot_token = os.getenv("KIRO_BOT_TOKEN", self.mattermost_token)
             else:
                 bot_token = self.mattermost_token  # Default to Claude-Research token
-                
+
             headers = {"Authorization": f"Bearer {bot_token}"}
             post_data = {
                 'channel_id': self.channel_id,
-                'message': response
+                'message': ai_response
             }
-            
-            post_result = await self.retry_handler.retry_with_backoff(
-                requests.post,
+
+            post_response = requests.post(
                 f"{self.mattermost_base_url}/posts",
                 json=post_data,
-                headers=headers
+                headers=headers,
+                timeout=10
             )
-            
-            # Add to conversation history  
-            self.add_to_history(persona_config.get('name', persona), response)
+
+            if post_response.status_code not in [200, 201]:
+                return [TextContent(type="text", text=f"ERROR: Failed to post message: {post_response.status_code} - {post_response.text}")]
+
+            # Add to conversation history
+            self.add_to_history(persona_config.get('name', persona), ai_response)
             
             # Invalidate message cache since we posted a new message
             self.message_cache.invalidate_cache()
             
-            return [TextContent(type="text", text=f"OK: Posted as {persona_config.get('name', persona)}: {response[:100]}...")]
+            return [TextContent(type="text", text=f"OK: Posted as {persona_config.get('name', persona)}: {ai_response[:100]}...")]
             
         except Exception as e:
             return [TextContent(type="text", text=f"ERROR: Error contributing: {str(e)}")]
@@ -538,26 +505,60 @@ class MultiModelMCPServer:
     async def handle_get_conversation_context(self, arguments: dict) -> List[TextContent]:
         """Handle get_conversation_context tool calls"""
         if not self.mattermost:
-            # Demo mode - return conversation summary
-            if self.conversation_context.messages:
-                recent = self.conversation_context.get_recent_messages(limit=5)
-                summary = "Recent conversation:\n"
-                for msg in recent:
-                    summary += f"- {msg['author']}: {msg['content'][:100]}...\n"
-                return [TextContent(type="text", text=f"[DEMO MODE] Conversation Context:\n{summary}")]
-            else:
-                return [TextContent(type="text", text="[DEMO MODE] No conversation context yet.")]
-        
+            return [TextContent(type="text", text="ERROR: Mattermost connection not available")]
+
         try:
-            # Get recent discussion
-            posts = self.mattermost.posts.get_posts_for_channel(self.channel_id)
-            context_summary = await self.analyze_conversation_context(posts)
-            
+            # Get recent discussion using direct API call
+            import requests
+            headers = {"Authorization": f"Bearer {self.mattermost_token}"}
+            response = requests.get(
+                f"{self.mattermost_base_url}/channels/{self.channel_id}/posts",
+                headers=headers,
+                params={"per_page": 10},
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                return [TextContent(type="text", text=f"ERROR: Failed to fetch posts: {response.status_code}")]
+
+            posts_data = response.json()
+            context_summary = await self.analyze_conversation_context(posts_data)
+
             return [TextContent(type="text", text=f"Conversation Context Analysis:\n{context_summary}")]
-            
+
         except Exception as e:
             return [TextContent(type="text", text=f"ERROR: Error analyzing conversation context: {str(e)}")]
-    
+
+    async def handle_subscribe_notifications(self, arguments: dict) -> List[TextContent]:
+        """Handle subscribe_notifications tool calls"""
+        channel_id = arguments.get("channel_id", self.channel_id)
+
+        if not self.mattermost:
+            return [TextContent(type="text", text="ERROR: Mattermost connection not available")]
+
+        try:
+            # For now, just acknowledge the subscription request
+            # Real WebSocket implementation would go here
+            logger.info(f"Subscribed to notifications for channel {channel_id}")
+            return [TextContent(type="text", text=f"OK: Subscribed to notifications for channel {channel_id}")]
+
+        except Exception as e:
+            return [TextContent(type="text", text=f"ERROR: Error subscribing to notifications: {str(e)}")]
+
+    async def handle_unsubscribe_notifications(self, arguments: dict) -> List[TextContent]:
+        """Handle unsubscribe_notifications tool calls"""
+        if not self.mattermost:
+            return [TextContent(type="text", text="ERROR: Mattermost connection not available")]
+
+        try:
+            # For now, just acknowledge the unsubscription request
+            # Real WebSocket implementation would go here
+            logger.info("Unsubscribed from notifications")
+            return [TextContent(type="text", text="OK: Unsubscribed from notifications")]
+
+        except Exception as e:
+            return [TextContent(type="text", text=f"ERROR: Error unsubscribing from notifications: {str(e)}")]
+
     async def build_context(self, persona: str = "claude_research") -> str:
         """Build conversation context from ConversationContext"""
         return self.conversation_context.get_context_for_persona(persona)

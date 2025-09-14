@@ -14,7 +14,9 @@
       "Read(//c/Users/cyapp/AppData/Local/claude-cli-nodejs/Cache/**)",
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
-      "mcp__multi-model-debate__subscribe_notifications"
+      "mcp__multi-model-debate__subscribe_notifications",
+      "Bash(cp:*)",
+      "Bash(mv:*)"
     ],
     "deny": [],
     "ask": [],
