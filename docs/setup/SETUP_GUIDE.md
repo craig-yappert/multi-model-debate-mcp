@@ -15,7 +15,7 @@ Before you begin, ensure you have:
 ```bash
 # Clone the repository
 git clone <your-repository-url>
-cd multi-model-debate-mcp
+cd multi-model-debate
 
 # Create virtual environment (recommended)
 python -m venv venv
@@ -154,7 +154,7 @@ python src/mcp_server.py
        "multi-model-debate": {
          "command": "python",
          "args": ["src/mcp_server.py"],
-         "cwd": "/full/path/to/multi-model-debate-mcp",
+         "cwd": "/full/path/to/multi-model-debate",
          "env": {
            "PYTHONUNBUFFERED": "1"
          }
@@ -201,7 +201,7 @@ You should see your test message and an AI response in the Mattermost channel.
 ```bash
 # Ensure you're in the correct directory
 pwd
-# Should end with: multi-model-debate-mcp
+# Should end with: multi-model-debate
 
 # Check if config file exists
 ls config/chat_coordination_rules.yaml

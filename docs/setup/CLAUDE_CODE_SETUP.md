@@ -18,9 +18,9 @@ The MCP server is ready! Follow these steps to connect it to Claude Code:
 {
   "command": "python",
   "args": ["src/mcp_server.py"],
-  "cwd": "C:\\Users\\cyapp\\multi-model-debate\\multi-model-debate-mcp",
+  "cwd": "C:\\Users\\cyapp\\multi-model-debate",
   "env": {
-    "PYTHONPATH": "C:\\Users\\cyapp\\multi-model-debate\\multi-model-debate-mcp"
+    "PYTHONPATH": "C:\\Users\\cyapp\\multi-model-debate"
   }
 }
 ```
@@ -32,7 +32,7 @@ The MCP server is ready! Follow these steps to connect it to Claude Code:
 If you want full Mattermost integration, add these to the env section:
 ```json
 "env": {
-  "PYTHONPATH": "C:\\Users\\cyapp\\multi-model-debate\\multi-model-debate-mcp",
+  "PYTHONPATH": "C:\\Users\\cyapp\\multi-model-debate",
   "ANTHROPIC_API_KEY": "your_anthropic_api_key_here",
   "CLAUDE_RESEARCH_BOT_TOKEN": "your_mattermost_bot_token_here"
 }

@@ -4,7 +4,7 @@
 
 ### 1. Start Mattermost
 ```bash
-cd C:\Users\cyapp\multi-model-debate\multi-model-debate-mcp
+cd multi-model-debate
 docker-compose up -d
 ```
 

@@ -69,7 +69,7 @@ graph TB
 ```bash
 # Clone repository
 git clone <repository-url>
-cd multi-model-debate-mcp
+cd multi-model-debate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -115,7 +115,7 @@ Add to your Claude Code MCP configuration:
     "multi-model-debate": {
       "command": "python",
       "args": ["src/mcp_server.py"],
-      "cwd": "/path/to/multi-model-debate-mcp"
+      "cwd": "/path/to/multi-model-debate"
     }
   }
 }

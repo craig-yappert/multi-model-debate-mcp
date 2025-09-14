@@ -12,7 +12,7 @@ Getting Kiro connected to your Mattermost so we can test the peer conversation m
 ## Step 1: Test the MCP Server (5 minutes)
 ```bash
 # Navigate to your project directory
-cd multi-model-debate-mcp
+cd multi-model-debate
 
 # Run the test script to make sure everything works
 python test_mcp_connection.py
@@ -31,7 +31,7 @@ Add this to your Kiro MCP configuration:
     "multi-model-debate": {
       "command": "python",
       "args": ["src/mcp_server.py"],
-      "cwd": "C:/path/to/your/multi-model-debate-mcp",
+      "cwd": "C:/path/to/your/multi-model-debate",
       "env": {
         "PYTHONUNBUFFERED": "1"
       },
@@ -42,7 +42,7 @@ Add this to your Kiro MCP configuration:
 }
 ```
 
-**Replace:** `C:/path/to/your/multi-model-debate-mcp` with your actual project path.
+**Replace:** `C:/path/to/your/multi-model-debate` with your actual project path.
 
 ## Step 3: Test the Connection (1 minute)
 In Kiro, try using the MCP tools:
