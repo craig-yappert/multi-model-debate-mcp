@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "multi-model-debate": {
+      "command": "python",
+      "args": [
+        "src/mcp_server.py"
+      ],
+      "cwd": "C:\\Users\\cyapp\\multi-model-debate\\multi-model-debate-mcp",
+      "env": {
+        "PYTHONPATH": "C:\\Users\\cyapp\\multi-model-debate\\multi-model-debate-mcp"
+      }
+    }
+  }
+}
