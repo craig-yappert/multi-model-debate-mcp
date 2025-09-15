@@ -59,6 +59,7 @@ graph TB
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Python 3.10+
 - [Mattermost server](https://docs.mattermost.com/guides/deployment.html) (local or hosted)
 - [Anthropic API Key](https://console.anthropic.com/)
@@ -154,11 +155,13 @@ Use: get_conversation_context
 ## 🎭 AI Personas
 
 ### claude-research
+
 - **Role**: Analytical research and strategic thinking
 - **Style**: Deep analysis, references research, asks probing questions
 - **Use for**: Complex problem analysis, strategic decisions, technical research
 
 ### kiro
+
 - **Role**: Practical execution and pragmatic solutions
 - **Style**: Action-oriented, considers constraints, focuses on "good enough"
 - **Use for**: Implementation planning, timeline reality checks, practical decisions
@@ -196,16 +199,19 @@ For the roadmap vision, see `roadmap/FUTURE_VISION.md`.
 ### Common Issues
 
 **MCP tools not working:**
+
 - Verify server is running: `python src/mcp_server.py`
 - Check Claude Code MCP configuration
 - Restart Claude Code after server changes
 
 **Mattermost connection failed:**
+
 - Verify Mattermost server is running
 - Check bot tokens in .env file
 - Ensure bots have channel access permissions
 
 **AI responses not generating:**
+
 - Verify ANTHROPIC_API_KEY in .env
 - Check API key has sufficient credits
 - Review server logs for error messages
@@ -225,6 +231,7 @@ mcp__multi-model-debate__get_conversation_context
 ## 🤝 Contributing
 
 Current development focus:
+
 - **Stability improvements** for existing Mattermost integration
 - **Better error handling** and user feedback
 - **Enhanced persona definitions** and response quality

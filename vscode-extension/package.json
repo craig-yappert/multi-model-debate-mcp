@@ -1,0 +1,108 @@
+{
+  "name": "multi-model-debate-vscode",
+  "displayName": "Multi-Model AI Collaboration",
+  "description": "Bring claude-research and kiro AI personas directly into your VSCode workflow with full code context awareness",
+  "version": "0.1.0",
+  "publisher": "multi-model-debate",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/craig-yappert/multi-model-debate-mcp.git"
+  },
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Chat",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "collaboration",
+    "chat",
+    "claude",
+    "mcp",
+    "assistant"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "claude-research",
+        "name": "claude-research",
+        "description": "Deep analytical thinking and strategic perspective on your code",
+        "isSticky": true
+      },
+      {
+        "id": "kiro",
+        "name": "kiro",
+        "description": "Practical execution and implementation focus with reality checks",
+        "isSticky": true
+      }
+    ],
+    "configuration": {
+      "title": "Multi-Model AI Collaboration",
+      "properties": {
+        "multiModelDebate.mcpServerPath": {
+          "type": "string",
+          "default": "../src/mcp_server.py",
+          "description": "Path to the MCP server Python file"
+        },
+        "multiModelDebate.enableMattermostFallback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Mattermost fallback when MCP server is unavailable"
+        },
+        "multiModelDebate.contextGatheringEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable rich context gathering (file content, errors, debugging state)"
+        },
+        "multiModelDebate.maxContextSize": {
+          "type": "number",
+          "default": 8000,
+          "description": "Maximum characters to include in code context"
+        },
+        "multiModelDebate.enableCommandLineAccess": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow AI personas to suggest and execute command line operations"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "multiModelDebate.testMcpConnection",
+        "title": "Test MCP Server Connection",
+        "category": "Multi-Model Debate"
+      },
+      {
+        "command": "multiModelDebate.showConversationHistory",
+        "title": "Show AI Conversation History",
+        "category": "Multi-Model Debate"
+      },
+      {
+        "command": "multiModelDebate.clearConversationHistory",
+        "title": "Clear AI Conversation History",
+        "category": "Multi-Model Debate"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.15.0",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "child_process": "^1.0.2",
+    "ws": "^8.13.0"
+  }
+}

@@ -15,6 +15,10 @@ docs-reorganized/
 │   ├── STATUS.md           # Current system status
 │   └── TECHNICAL_REFERENCE.md  # Implementation details
 │
+├── proposals/         # 🆕 NEW: Evolution proposals and extensions
+│   ├── VS_CODE_AI_COLLABORATION_PROPOSAL.md  # VS Code extension proposal
+│   └── MCP_TO_VSCODE_MIGRATION_GUIDE.md      # Technical migration guide
+│
 ├── setup/             # Installation and configuration
 │   └── SETUP_GUIDE.md      # Complete setup instructions
 │
@@ -42,6 +46,10 @@ docs-reorganized/
 ### 🔮 I want to understand the vision
 - **Future**: [`roadmap/FUTURE_VISION.md`](roadmap/FUTURE_VISION.md) - Long-term goals and planned features
 - **Current**: [`current/README.md`](current/README.md) - What we have now vs. the vision
+
+### 🚀 I want to extend/evolve the system
+- **VS Code Extension**: [`proposals/VS_CODE_AI_COLLABORATION_PROPOSAL.md`](proposals/VS_CODE_AI_COLLABORATION_PROPOSAL.md) - Bring AI collaboration into the IDE
+- **Migration Guide**: [`proposals/MCP_TO_VSCODE_MIGRATION_GUIDE.md`](proposals/MCP_TO_VSCODE_MIGRATION_GUIDE.md) - Technical implementation details
 
 ### 🐛 I have problems
 - **Troubleshooting**: [`setup/SETUP_GUIDE.md#troubleshooting`](setup/SETUP_GUIDE.md#troubleshooting) - Common issues
