@@ -199,6 +199,60 @@ the MCP server connection.
 
 This ensures continuity while troubleshooting connection issues.
 
+## Packaging & Installation (No Dev Host)
+
+If you prefer to install/update like a normal VS Code extension without extra windows:
+
+### Local Install via VSIX
+
+1. Build the extension
+
+   ```bash
+   npm install
+   npm run compile
+   npm run package
+   ```
+
+   This produces a file like `multi-model-debate-vscode-0.1.0.vsix`.
+
+2. Install the VSIX in VS Code
+
+   - Open the Command Palette and run: `Extensions: Install from VSIX...`
+   - Select the generated `.vsix` file
+
+3. Update later
+
+   - Re-run `npm run package`
+   - Use `Extensions: Install from VSIX...` again to update
+
+### Marketplace Publishing (Optional)
+
+To publish updates via the standard Extensions interface:
+
+1. Create a publisher (one-time)
+
+   - Install vsce: `npm i -g @vscode/vsce` (or use the devDependency script)
+   - Create a publisher at <https://aka.ms/vscode-create-publisher>
+   - Add `publisher` in `package.json` (already set to `multi-model-debate`)
+
+2. Publish a new version
+
+   ```bash
+   npm version patch   # or minor/major
+   npm run publish     # runs vsce publish
+   ```
+
+3. Users install/update normally
+
+   - Search the Marketplace by extension name
+   - Receive updates automatically according to VS Code settings
+
+Notes:
+
+- Ensure `engines.vscode` matches the minimum VS Code version you support
+- Keep `CHANGELOG.md` updated for Marketplace listing quality
+- Respect semantic versioning before publishing
+
 ## Privacy & Data
 
 - **Conversations stored locally** in VS Code workspace

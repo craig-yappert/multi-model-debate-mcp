@@ -307,6 +307,62 @@ class ConversationStore {
             };
         }
     }
+    // Threading support methods
+    async createThread(participants, topic) {
+        const threadId = this.generateThreadId();
+        const thread = {
+            id: threadId,
+            participants,
+            messages: [],
+            status: 'active',
+            topic,
+            startTime: new Date().toISOString(),
+            lastActivity: new Date().toISOString()
+        };
+        const threads = await this.getStoredThreads();
+        threads.push(thread);
+        await this.context.workspaceState.update('ai-conversation-threads', threads);
+        return thread;
+    }
+    async addMessageToThread(threadId, message) {
+        const threads = await this.getStoredThreads();
+        const threadIndex = threads.findIndex(t => t.id === threadId);
+        if (threadIndex !== -1) {
+            threads[threadIndex].messages.push(message);
+            threads[threadIndex].lastActivity = new Date().toISOString();
+            await this.context.workspaceState.update('ai-conversation-threads', threads);
+        }
+    }
+    async getThread(threadId) {
+        const threads = await this.getStoredThreads();
+        return threads.find(t => t.id === threadId);
+    }
+    async updateThreadStatus(threadId, status) {
+        const threads = await this.getStoredThreads();
+        const threadIndex = threads.findIndex(t => t.id === threadId);
+        if (threadIndex !== -1) {
+            threads[threadIndex].status = status;
+            threads[threadIndex].lastActivity = new Date().toISOString();
+            await this.context.workspaceState.update('ai-conversation-threads', threads);
+        }
+    }
+    async getActiveThreads() {
+        const threads = await this.getStoredThreads();
+        return threads.filter(t => t.status === 'active');
+    }
+    async getStoredThreads() {
+        try {
+            const threads = this.context.workspaceState.get('ai-conversation-threads');
+            return threads || [];
+        }
+        catch (error) {
+            console.error('Failed to get stored threads:', error);
+            return [];
+        }
+    }
+    generateThreadId() {
+        return `thread-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
 }
 exports.ConversationStore = ConversationStore;
 ConversationStore.STORAGE_KEY = 'ai-conversations';

@@ -46,7 +46,7 @@ function activate(context) {
         registerCommands(context);
         console.log('Multi-Model AI Collaboration extension activated successfully!');
         // Show activation message
-        vscode.window.showInformationMessage('Multi-Model AI Collaboration ready! Use @claude-research and @kiro in chat.', 'Test Connection').then(selection => {
+        vscode.window.showInformationMessage('Multi-Model AI Collaboration ready! Use @claude-research, @kiro, @copilot, and @team in chat.', 'Test Connection').then(selection => {
             if (selection === 'Test Connection') {
                 vscode.commands.executeCommand('multiModelDebate.testMcpConnection');
             }
@@ -82,8 +82,18 @@ function registerChatParticipants(context) {
         return chatManager.handleChatRequest('kiro', request, context, stream, token);
     });
     kiroParticipant.iconPath = new vscode.ThemeIcon('tools');
+    // Register copilot participant
+    const copilotParticipant = vscode.chat.createChatParticipant('copilot', async (request, context, stream, token) => {
+        return chatManager.handleChatRequest('copilot', request, context, stream, token);
+    });
+    copilotParticipant.iconPath = new vscode.ThemeIcon('copilot');
+    // Register team participant
+    const teamParticipant = vscode.chat.createChatParticipant('team', async (request, context, stream, token) => {
+        return chatManager.handleChatRequest('team', request, context, stream, token);
+    });
+    teamParticipant.iconPath = new vscode.ThemeIcon('people');
     // Add to subscriptions for proper cleanup
-    context.subscriptions.push(claudeResearchParticipant, kiroParticipant);
+    context.subscriptions.push(claudeResearchParticipant, kiroParticipant, copilotParticipant, teamParticipant);
     console.log('Chat participants registered successfully');
 }
 function registerCommands(context) {

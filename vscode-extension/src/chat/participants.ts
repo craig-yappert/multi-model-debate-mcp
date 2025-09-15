@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { MCPClient } from '../mcp/client';
-import { ConversationStore, ConversationEntry } from '../storage/conversation-store';
+import { ConversationStore, ConversationEntry, ConversationThread, ThreadMessage, AIToAIRequest } from '../storage/conversation-store';
 import { ContextAnalyzer, VSCodeContext } from './context-analyzer';
 import { CommandLineManager } from './command-line-manager';
 import { MattermostFallback } from './mattermost-fallback';
@@ -27,11 +27,26 @@ export class ChatParticipantManager {
         token: vscode.CancellationToken
     ): Promise<{ metadata: { command: string } }> {
 
+        // Note: VS Code's model selector in chat is for the built-in Copilot integration.
+        // Our extension uses specific personas (@claude-research, @kiro, @copilot, @team)
+        // that route to our MCP server, not the VS Code model selector.
+        // The model shown in VS Code chat UI doesn't affect our persona routing.
+
+        // Special handling for team persona
+        if (persona === 'team') {
+            return this.handleTeamRequest(request, context, stream, token);
+        }
+
         const startTime = Date.now();
 
         try {
-            // Show thinking indicator
+            // Show thinking indicator with clarification about routing
             stream.progress(`${this.getPersonaDisplayName(persona)} is analyzing your request...`);
+
+            // If user seems confused about model selection, clarify
+            if (request.prompt.toLowerCase().includes('gpt') || request.prompt.toLowerCase().includes('model')) {
+                stream.markdown(`ℹ️ *Note: This extension uses specific AI personas (@claude-research, @kiro, @copilot) that connect through our MCP server, independent of VS Code's model selector.*\n\n`);
+            }
 
             // Gather rich context from VS Code
             const codeContext = await this.contextAnalyzer.gatherContext();
@@ -57,6 +72,11 @@ export class ChatParticipantManager {
             if (!aiResponse || aiResponse.trim().length === 0) {
                 throw new Error('No response received from AI persona');
             }
+
+            // Log response length for debugging
+            console.log(`Response from ${persona}: ${aiResponse.length} characters`);
+            console.log('First 500 chars:', aiResponse.substring(0, 500));
+            console.log('Last 500 chars:', aiResponse.substring(Math.max(0, aiResponse.length - 500)));
 
             // Check if response contains command line suggestions
             const commandSuggestions = this.extractCommandSuggestions(aiResponse);
@@ -114,13 +134,30 @@ export class ChatParticipantManager {
     }
 
     private async streamResponse(stream: vscode.ChatResponseStream, response: string): Promise<void> {
-        // Stream response in chunks to make it feel more interactive
-        const chunks = this.chunkResponse(response, 100);
+        // Get configuration
+        const config = vscode.workspace.getConfiguration('multiModelDebate');
+        const useChunking = config.get<boolean>('useResponseChunking', true);
 
-        for (const chunk of chunks) {
-            stream.markdown(chunk);
-            // Small delay to make streaming visible
-            await new Promise(resolve => setTimeout(resolve, 50));
+        if (!useChunking) {
+            // Send entire response at once to avoid truncation
+            stream.markdown(response);
+            console.log(`Sent entire response at once: ${response.length} characters`);
+        } else {
+            // Use chunking if enabled
+            const chunkSize = config.get<number>('responseChunkSize', 5000);
+            const streamDelay = config.get<number>('responseStreamDelay', 5);
+
+            // Stream response in configurable chunks
+            const chunks = this.chunkResponse(response, chunkSize);
+            console.log(`Streaming ${chunks.length} chunks of max size ${chunkSize}`);
+
+            for (const chunk of chunks) {
+                stream.markdown(chunk);
+                // Configurable delay between chunks
+                if (streamDelay > 0) {
+                    await new Promise(resolve => setTimeout(resolve, streamDelay));
+                }
+            }
         }
     }
 
@@ -206,6 +243,10 @@ export class ChatParticipantManager {
                 return 'Claude Research';
             case 'kiro':
                 return 'Kiro';
+            case 'copilot':
+                return 'GitHub Copilot';
+            case 'team':
+                return 'AI Team';
             default:
                 return persona;
         }
@@ -217,8 +258,250 @@ export class ChatParticipantManager {
                 return '🧠'; // Brain for analytical thinking
             case 'kiro':
                 return '🔧'; // Tools for practical execution
+            case 'copilot':
+                return '🚁'; // Helicopter for oversight and integration
+            case 'team':
+                return '🤝'; // Handshake for collaboration
             default:
                 return '🤖';
         }
+    }
+
+    async handleTeamRequest(
+        request: vscode.ChatRequest,
+        context: vscode.ChatContext,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<{ metadata: { command: string } }> {
+        const startTime = Date.now();
+
+        try {
+            // Parse team command
+            const prompt = request.prompt.trim();
+            const commandMatch = prompt.match(/^(debate|collaborate|discuss)\s+(.+)$/);
+            
+            let command = 'collaborate';
+            let topic = prompt;
+
+            if (commandMatch) {
+                command = commandMatch[1];
+                topic = commandMatch[2];
+            }
+
+            stream.progress('🤝 Team is initializing multi-AI collaboration...');
+
+            // Create a new conversation thread
+            const participants = ['claude-research', 'kiro', 'copilot'];
+            const thread = await this.conversationStore.createThread(participants, topic);
+
+            stream.markdown(`**AI Team** 🤝\n\n`);
+            stream.markdown(`Starting ${command} session: **${topic}**\n\n`);
+            stream.markdown(`Participants: @claude-research 🧠, @kiro 🔧, and @copilot �\n\n`);
+            stream.markdown(`---\n\n`);
+
+            // Gather context for the conversation
+            const codeContext = await this.contextAnalyzer.gatherContext();
+            const conversationHistory = await this.conversationStore.getRecentConversations(3);
+
+            // Start the multi-agent conversation
+            await this.orchestrateMultiAgentConversation(
+                thread, 
+                topic, 
+                command, 
+                stream, 
+                codeContext, 
+                conversationHistory
+            );
+
+            // Update thread status
+            await this.conversationStore.updateThreadStatus(thread.id, 'concluded');
+
+            stream.markdown(`\n---\n\n**🎯 Team Collaboration Complete**\n\n`);
+
+            return { 
+                metadata: { 
+                    command: `team-${command}`
+                } 
+            };
+
+        } catch (error) {
+            console.error('Error in team chat participant:', error);
+            stream.markdown(`**AI Team** ⚠️\n\nError during team collaboration: ${error}`);
+            return { metadata: { command: 'team-error' } };
+        }
+    }
+
+    private async orchestrateMultiAgentConversation(
+        thread: ConversationThread,
+        topic: string,
+        command: string,
+        stream: vscode.ChatResponseStream,
+        codeContext: VSCodeContext,
+        conversationHistory: ConversationEntry[]
+    ): Promise<void> {
+        const maxTurns = 4; // Prevent infinite loops
+        let currentSpeaker = 'claude-research'; // Start with research
+        let turn = 0;
+
+        // Initial prompt to get the conversation started
+        let currentMessage = this.getInitialPrompt(command, topic, codeContext);
+
+        while (turn < maxTurns) {
+            turn++;
+
+            stream.progress(`Turn ${turn}: @${currentSpeaker} is thinking...`);
+
+            try {
+                // Create AI-to-AI request
+                const aiRequest: AIToAIRequest = {
+                    fromPersona: turn === 1 ? 'team' : this.getOtherPersona(currentSpeaker),
+                    toPersona: currentSpeaker,
+                    message: currentMessage,
+                    conversationContext: conversationHistory,
+                    interactionType: this.getInteractionType(turn, command),
+                    threadId: thread.id
+                };
+
+                // Get response from current AI
+                const response = await this.mcpClient.sendAIToAIMessage(aiRequest);
+
+                // Display the response
+                stream.markdown(`**@${currentSpeaker}** ${this.getPersonaIcon(currentSpeaker)}\n\n`);
+                await this.streamResponse(stream, response);
+                stream.markdown(`\n\n`);
+
+                // Add message to thread
+                const threadMessage: ThreadMessage = {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    persona: currentSpeaker,
+                    message: response,
+                    timestamp: new Date().toISOString(),
+                    interactionType: aiRequest.interactionType
+                };
+
+                await this.conversationStore.addMessageToThread(thread.id, threadMessage);
+
+                // Prepare message for next AI
+                currentMessage = this.createFollowUpPrompt(response, command, turn);
+
+                // Switch to other persona
+                currentSpeaker = this.getOtherPersona(currentSpeaker);
+
+                // Check if conversation should conclude
+                if (this.shouldConcludeConversation(response, turn)) {
+                    break;
+                }
+
+            } catch (error) {
+                console.error(`Error in turn ${turn} with ${currentSpeaker}:`, error);
+                stream.markdown(`⚠️ Error communicating with @${currentSpeaker}: ${error}\n\n`);
+                break;
+            }
+        }
+
+        // Generate final synthesis
+        await this.generateSynthesis(thread, stream);
+    }
+
+    private getInitialPrompt(command: string, topic: string, context: VSCodeContext): string {
+        const contextSummary = this.summarizeContext(context);
+        
+        switch (command) {
+            case 'debate':
+                return `Let's have a constructive debate about: ${topic}\n\nCurrent context: ${contextSummary}\n\nPlease present your initial perspective and reasoning.`;
+            case 'collaborate':
+                return `Let's collaborate on: ${topic}\n\nCurrent context: ${contextSummary}\n\nPlease share your initial thoughts and proposed approach.`;
+            case 'discuss':
+                return `Let's discuss: ${topic}\n\nCurrent context: ${contextSummary}\n\nPlease provide your analysis and insights.`;
+            default:
+                return `Let's work together on: ${topic}\n\nCurrent context: ${contextSummary}\n\nPlease share your perspective.`;
+        }
+    }
+
+    private createFollowUpPrompt(previousResponse: string, command: string, turn: number): string {
+        const responsePrefix = `Previous response from colleague: "${previousResponse}"\n\n`;
+        
+        if (turn >= 3) {
+            return responsePrefix + "Please provide your final thoughts and help synthesize our discussion into actionable conclusions.";
+        }
+
+        switch (command) {
+            case 'debate':
+                return responsePrefix + "Please respond with your counterpoints, alternative perspectives, or build upon the valid points raised.";
+            case 'collaborate':
+                return responsePrefix + "Please build upon this idea, suggest improvements, or identify implementation considerations.";
+            default:
+                return responsePrefix + "Please respond with your thoughts, questions, or additional insights.";
+        }
+    }
+
+    private getInteractionType(turn: number, command: string): 'response' | 'challenge' | 'build_upon' | 'synthesize' {
+        if (turn >= 3) return 'synthesize';
+        if (command === 'debate') return turn % 2 === 0 ? 'challenge' : 'response';
+        return 'build_upon';
+    }
+
+    private getOtherPersona(currentPersona: string): string {
+        return currentPersona === 'claude-research' ? 'kiro' : 'claude-research';
+    }
+
+    private shouldConcludeConversation(response: string, turn: number): boolean {
+        // Simple heuristics to detect conclusion
+        const conclusionWords = ['conclusion', 'finally', 'in summary', 'to summarize', 'overall'];
+        const hasConclusion = conclusionWords.some(word => 
+            response.toLowerCase().includes(word)
+        );
+        
+        return turn >= 3 && hasConclusion;
+    }
+
+    private async generateSynthesis(thread: ConversationThread, stream: vscode.ChatResponseStream): Promise<void> {
+        stream.progress('Generating synthesis of the conversation...');
+
+        try {
+            const messages = thread.messages.map(msg => 
+                `${msg.persona}: ${msg.message}`
+            ).join('\n\n');
+
+            const synthesisRequest: AIToAIRequest = {
+                fromPersona: 'team',
+                toPersona: 'claude-research',
+                message: `Please create a synthesis of this multi-AI conversation:\n\n${messages}\n\nProvide a summary of key points, areas of agreement, disagreements, and actionable conclusions.`,
+                conversationContext: [],
+                interactionType: 'synthesize',
+                threadId: thread.id
+            };
+
+            const synthesis = await this.mcpClient.sendAIToAIMessage(synthesisRequest);
+
+            stream.markdown(`**🎯 Conversation Synthesis**\n\n`);
+            stream.markdown(synthesis);
+
+        } catch (error) {
+            console.error('Error generating synthesis:', error);
+            stream.markdown(`**🎯 Conversation Synthesis**\n\n⚠️ Could not generate synthesis: ${error}`);
+        }
+    }
+
+    private summarizeContext(context: VSCodeContext): string {
+        const parts = [];
+        
+        if (context.activeFile) {
+            parts.push(`Active file: ${context.activeFile.path}`);
+        }
+        
+        if (context.workspace?.name) {
+            parts.push(`Workspace: ${context.workspace.name}`);
+        }
+
+        if (context.diagnostics.length > 0) {
+            parts.push(`${context.diagnostics.length} diagnostic issues`);
+        }
+
+        if (context.git?.branch) {
+            parts.push(`Git branch: ${context.git.branch}`);
+        }
+
+        return parts.length > 0 ? parts.join(', ') : 'No specific context';
     }
 }

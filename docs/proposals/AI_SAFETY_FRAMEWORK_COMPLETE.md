@@ -15,12 +15,14 @@ Following real-world experience with AI systems causing unintended damage (datab
 ## The Problem: AI Power vs. AI Safety
 
 ### Real-World Risks We've Experienced
+
 - ❌ **Database destruction**: AI tools executing destructive operations without adequate safeguards
 - ❌ **Unintended file changes**: Mass modifications across codebases without user understanding
 - ❌ **Configuration damage**: AI modifying system configs leading to broken environments
 - ❌ **Dependency hell**: AI installing/updating packages causing version conflicts
 
 ### The False Choice
+
 **Traditional thinking**: Choose between powerful AI (risky) or limited AI (not helpful)
 
 **Our approach**: Graduated AI that becomes more capable as trust is earned, with comprehensive safety nets at every level.
@@ -30,6 +32,7 @@ Following real-world experience with AI systems causing unintended damage (datab
 ## Tiered Safety Model
 
 ### Level 1: Read-Only Intelligence (Week 1-2)
+
 **Philosophy**: "I can see everything, change nothing"
 
 ```typescript
@@ -58,6 +61,7 @@ interface ReadOnlyCapabilities {
 ```
 
 **Example Interaction:**
+
 ```
 Developer: "@claude-research what do you think about this auth function?"
 
@@ -79,6 +83,7 @@ Developer: "@claude-research what do you think about this auth function?"
 ```
 
 ### Level 2: Supervised Operations (Week 3-4)
+
 **Philosophy**: "I can show you exactly what I'll do, you approve each action"
 
 ```typescript
@@ -112,6 +117,7 @@ interface SupervisedCapabilities extends ReadOnlyCapabilities {
 ```
 
 **Example Interaction:**
+
 ```
 Developer: "@kiro can you fix that return statement?"
 
@@ -136,6 +142,7 @@ Developer: [Clicks Apply]
 ```
 
 ### Level 3: Trusted Assistant (Week 5+)
+
 **Philosophy**: "I can handle routine operations safely, but ask permission for anything risky"
 
 ```typescript
@@ -165,6 +172,7 @@ interface TrustedCapabilities extends SupervisedCapabilities {
 ```
 
 **Example Interaction:**
+
 ```
 @kiro: "I found the auth bug. Let me fix it and run tests..."
        [Auto-executes safe operations]
@@ -184,6 +192,7 @@ interface TrustedCapabilities extends SupervisedCapabilities {
 ## Safety Mechanisms
 
 ### 1. Automatic Rollback System
+
 ```typescript
 interface RollbackSystem {
   gitCheckpoints: {
@@ -207,6 +216,7 @@ interface RollbackSystem {
 ```
 
 ### 2. Operation Approval System
+
 ```typescript
 interface ApprovalSystem {
   riskLevels: {
@@ -225,6 +235,7 @@ interface ApprovalSystem {
 ```
 
 ### 3. Educational Explanations
+
 ```typescript
 interface EducationalMode {
   alwaysExplain: {
@@ -375,9 +386,11 @@ const RISK_MATRIX: OperationRisk[] = [
 ## Implementation Phases
 
 ### Phase 1: Safe Foundation (Week 1-2)
+
 **Goal**: Establish trust through helpful, non-destructive AI assistance
 
 **Agent Capabilities**:
+
 ```typescript
 interface Phase1Capabilities {
   claude_research: {
@@ -395,15 +408,18 @@ interface Phase1Capabilities {
 ```
 
 **Success Criteria**:
+
 - ✅ AI provides valuable insights without touching any files
 - ✅ User feels confident in AI's understanding
 - ✅ All suggestions are specific and implementable
 - ✅ User learns from AI explanations
 
 ### Phase 2: Supervised Actions (Week 3-4)
+
 **Goal**: Allow AI to make changes with explicit approval and rollback
 
 **Agent Capabilities**:
+
 ```typescript
 interface Phase2Capabilities {
   claude_research: {
@@ -421,15 +437,18 @@ interface Phase2Capabilities {
 ```
 
 **Success Criteria**:
+
 - ✅ All AI actions are previewed and approved by user
 - ✅ Rollback system works reliably
 - ✅ User feels in control of all changes
 - ✅ No unintended side effects from AI operations
 
 ### Phase 3: Trusted Operations (Week 5+)
+
 **Goal**: AI can handle routine operations while maintaining safety
 
 **Agent Capabilities**:
+
 ```typescript
 interface Phase3Capabilities {
   claude_research: {
@@ -447,6 +466,7 @@ interface Phase3Capabilities {
 ```
 
 **Success Criteria**:
+
 - ✅ AI can safely handle routine development tasks
 - ✅ User can trust AI with repetitive operations
 - ✅ Complex operations still require approval
@@ -707,6 +727,7 @@ interface LearningSystem {
 ### What Success Looks Like
 
 **User Feedback Targets:**
+
 - ✅ "The AI helped me understand a complex bug and guided me through fixing it safely"
 - ✅ "I learned new patterns while getting actual work done"  
 - ✅ "The AI caught potential issues I would have missed"
@@ -714,6 +735,7 @@ interface LearningSystem {
 - ✅ "The AI explains things at the right level for my skill"
 
 **Measurable Outcomes:**
+
 - 🎯 Zero unintended system damage incidents
 - 🎯 >90% user approval rate for AI suggestions
 - 🎯 <5% rollback rate for approved operations
@@ -723,6 +745,7 @@ interface LearningSystem {
 ### What We're Preventing
 
 **Anti-Patterns to Avoid:**
+
 - ❌ "The AI broke my development environment"
 - ❌ "I don't understand what the AI changed"
 - ❌ "The AI made changes I didn't want"
@@ -730,6 +753,7 @@ interface LearningSystem {
 - ❌ "The AI assumed I knew more than I do"
 
 **Zero-Tolerance Incidents:**
+
 - 🚫 Data loss or corruption
 - 🚫 Broken development environments
 - 🚫 Unauthorized system modifications
@@ -743,6 +767,7 @@ interface LearningSystem {
 This comprehensive safety framework creates a **trust-building, educational AI collaboration system** that prioritizes user control and learning over raw capability. By implementing graduated permissions, comprehensive rollback systems, and educational explanations, we ensure AI assistance enhances development work without the fear of unintended consequences.
 
 **Key Advantages:**
+
 - 🛡️ **Complete protection** from database-deletion-style disasters
 - 📚 **Educational experience** that helps developers learn while working
 - 🔄 **Graduated trust model** that earns more capability over time

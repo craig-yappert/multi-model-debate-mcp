@@ -16,7 +16,12 @@
       "Bash(taskkill:*)",
       "mcp__multi-model-debate__subscribe_notifications",
       "Bash(cp:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(npm run compile:*)",
+      "Bash(npm run package:*)",
+      "Bash(code --install-extension:*)",
+      "WebSearch",
+      "WebFetch(domain:marketplace.visualstudio.com)"
     ],
     "deny": [],
     "ask": [],
@@ -25,6 +30,9 @@
     ]
   },
   "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "multi-model-debate"
+  ],
   "hooks": {
     "SessionStart": [
       {
@@ -36,8 +44,5 @@
         ]
       }
     ]
-  },
-  "enabledMcpjsonServers": [
-    "multi-model-debate"
-  ]
+  }
 }

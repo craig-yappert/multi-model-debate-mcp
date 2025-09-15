@@ -276,6 +276,55 @@ class MCPClient {
             throw new Error(`MCP request failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
+    async sendAIToAIMessage(request) {
+        if (!this.isConnected) {
+            const connected = await this.connect();
+            if (!connected) {
+                throw new Error('Could not connect to MCP server');
+            }
+        }
+        try {
+            // Create an enhanced request for AI-to-AI communication
+            const enhancedRequest = {
+                message: `[AI-to-AI Communication] From: ${request.fromPersona} | To: ${request.toPersona} | Type: ${request.interactionType}\n\nContext from conversation thread:\n${this.formatConversationContext(request.conversationContext)}\n\nMessage: ${request.message}`,
+                persona: request.toPersona,
+                vscode_context: this.createMinimalContext(),
+                conversation_history: request.conversationContext,
+                workspace: vscode.workspace.name,
+                timestamp: new Date().toISOString()
+            };
+            const response = await this.sendMCPRequest('contribute', enhancedRequest);
+            return response;
+        }
+        catch (error) {
+            console.error('AI-to-AI MCP request failed:', error);
+            throw new Error(`AI-to-AI communication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+    formatConversationContext(context) {
+        if (!context || context.length === 0) {
+            return "No previous conversation context.";
+        }
+        return context.map(entry => `${entry.persona}: ${entry.message}\nResponse: ${entry.response}`).join('\n\n');
+    }
+    createMinimalContext() {
+        // Create a minimal context for AI-to-AI communication
+        // This avoids overwhelming the AI with irrelevant VS Code context
+        return {
+            activeFile: undefined,
+            workspace: {
+                name: vscode.workspace.name || 'Unknown',
+                rootPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                openFiles: [],
+                recentFiles: []
+            },
+            git: undefined,
+            diagnostics: [],
+            debugging: undefined,
+            terminal: undefined,
+            timestamp: new Date().toISOString()
+        };
+    }
     async sendMCPRequest(method, params) {
         const requestId = Math.random().toString(36).substr(2, 9);
         const mcpRequest = {

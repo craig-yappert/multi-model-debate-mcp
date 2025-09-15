@@ -41,6 +41,18 @@
         "name": "kiro",
         "description": "Practical execution and implementation focus with reality checks",
         "isSticky": true
+      },
+      {
+        "id": "copilot",
+        "name": "copilot",
+        "description": "VS Code integration specialist and development workflow orchestrator",
+        "isSticky": true
+      },
+      {
+        "id": "team",
+        "name": "team",
+        "description": "Orchestrates collaborative conversations between claude-research, kiro, and copilot AI personas",
+        "isSticky": true
       }
     ],
     "configuration": {
@@ -70,6 +82,21 @@
           "type": "boolean",
           "default": true,
           "description": "Allow AI personas to suggest and execute command line operations"
+        },
+        "multiModelDebate.responseChunkSize": {
+          "type": "number",
+          "default": 5000,
+          "description": "Size of chunks when streaming AI responses (larger = bigger chunks, fewer messages)"
+        },
+        "multiModelDebate.responseStreamDelay": {
+          "type": "number",
+          "default": 5,
+          "description": "Delay in milliseconds between streaming chunks (lower = faster)"
+        },
+        "multiModelDebate.useResponseChunking": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable response chunking for better display. Disable to send entire response at once"
         }
       }
     },
@@ -94,12 +121,15 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "publish": "vsce publish"
   },
   "devDependencies": {
     "@types/node": "^18.15.0",
     "@types/vscode": "^1.74.0",
-    "typescript": "^4.9.5"
+    "typescript": "^4.9.5",
+    "@vscode/vsce": "^3.0.0"
   },
   "dependencies": {
     "child_process": "^1.0.2",

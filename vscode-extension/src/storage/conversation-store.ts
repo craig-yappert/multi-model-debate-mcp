@@ -9,12 +9,40 @@ export interface ConversationEntry {
     context: VSCodeContext;
     timestamp: string;
     responseTime: number; // milliseconds
+    threadId?: string; // Added for multi-agent conversations
     metadata?: {
         fileContext?: string;
         hasErrors?: boolean;
         isDebugging?: boolean;
         gitBranch?: string;
     };
+}
+
+export interface ThreadMessage {
+    id: string;
+    persona: string;
+    message: string;
+    timestamp: string;
+    interactionType: 'response' | 'challenge' | 'build_upon' | 'synthesize';
+}
+
+export interface ConversationThread {
+    id: string;
+    participants: string[];
+    messages: ThreadMessage[];
+    status: 'active' | 'concluded' | 'waiting_for_user';
+    topic: string;
+    startTime: string;
+    lastActivity: string;
+}
+
+export interface AIToAIRequest {
+    fromPersona: string;
+    toPersona: string;
+    message: string;
+    conversationContext: ConversationEntry[];
+    interactionType: 'response' | 'challenge' | 'build_upon' | 'synthesize';
+    threadId: string;
 }
 
 export interface ConversationSummary {
@@ -359,5 +387,72 @@ export class ConversationStore {
                 todaysConversations: 0
             };
         }
+    }
+
+    // Threading support methods
+
+    async createThread(participants: string[], topic: string): Promise<ConversationThread> {
+        const threadId = this.generateThreadId();
+        const thread: ConversationThread = {
+            id: threadId,
+            participants,
+            messages: [],
+            status: 'active',
+            topic,
+            startTime: new Date().toISOString(),
+            lastActivity: new Date().toISOString()
+        };
+
+        const threads = await this.getStoredThreads();
+        threads.push(thread);
+        await this.context.workspaceState.update('ai-conversation-threads', threads);
+
+        return thread;
+    }
+
+    async addMessageToThread(threadId: string, message: ThreadMessage): Promise<void> {
+        const threads = await this.getStoredThreads();
+        const threadIndex = threads.findIndex(t => t.id === threadId);
+        
+        if (threadIndex !== -1) {
+            threads[threadIndex].messages.push(message);
+            threads[threadIndex].lastActivity = new Date().toISOString();
+            await this.context.workspaceState.update('ai-conversation-threads', threads);
+        }
+    }
+
+    async getThread(threadId: string): Promise<ConversationThread | undefined> {
+        const threads = await this.getStoredThreads();
+        return threads.find(t => t.id === threadId);
+    }
+
+    async updateThreadStatus(threadId: string, status: ConversationThread['status']): Promise<void> {
+        const threads = await this.getStoredThreads();
+        const threadIndex = threads.findIndex(t => t.id === threadId);
+        
+        if (threadIndex !== -1) {
+            threads[threadIndex].status = status;
+            threads[threadIndex].lastActivity = new Date().toISOString();
+            await this.context.workspaceState.update('ai-conversation-threads', threads);
+        }
+    }
+
+    async getActiveThreads(): Promise<ConversationThread[]> {
+        const threads = await this.getStoredThreads();
+        return threads.filter(t => t.status === 'active');
+    }
+
+    private async getStoredThreads(): Promise<ConversationThread[]> {
+        try {
+            const threads = this.context.workspaceState.get<ConversationThread[]>('ai-conversation-threads');
+            return threads || [];
+        } catch (error) {
+            console.error('Failed to get stored threads:', error);
+            return [];
+        }
+    }
+
+    private generateThreadId(): string {
+        return `thread-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
 }
