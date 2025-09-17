@@ -4,12 +4,20 @@ import { MCPClient } from './mcp/client';
 import { ConversationStore } from './storage/conversation-store';
 import { ContextAnalyzer } from './chat/context-analyzer';
 import { CommandLineManager } from './chat/command-line-manager';
+import { EventBus } from './core/event-bus';
+import { RateLimiter } from './core/rate-limiter';
+import { ResilientMCPClient } from './core/resilient-mcp-client';
+import { AgentOrchestrator } from './core/agent-orchestrator';
 
 let mcpClient: MCPClient;
+let resilientMcpClient: ResilientMCPClient;
 let conversationStore: ConversationStore;
 let contextAnalyzer: ContextAnalyzer;
 let commandLineManager: CommandLineManager;
 let chatManager: ChatParticipantManager;
+let eventBus: EventBus;
+let rateLimiter: RateLimiter;
+let orchestrator: AgentOrchestrator;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Multi-Model AI Collaboration extension activating...');
@@ -45,6 +53,12 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 function initializeComponents(context: vscode.ExtensionContext) {
+    // Initialize event bus first for all components
+    eventBus = EventBus.getInstance();
+
+    // Initialize rate limiter for API protection
+    rateLimiter = new RateLimiter(10, 60000); // 10 requests per minute default
+
     // Get configuration
     const config = vscode.workspace.getConfiguration('multiModelDebate');
     const mcpServerPath = config.get<string>('mcpServerPath', './src/mcp_server.py');
@@ -53,15 +67,33 @@ function initializeComponents(context: vscode.ExtensionContext) {
     conversationStore = new ConversationStore(context);
     contextAnalyzer = new ContextAnalyzer(config);
     commandLineManager = new CommandLineManager(config);
-    mcpClient = new MCPClient(mcpServerPath, config);
 
-    // Initialize chat manager
+    // Wrap MCP client with resilience patterns
+    mcpClient = new MCPClient(mcpServerPath, config);
+    resilientMcpClient = new ResilientMCPClient(mcpClient);
+
+    // Initialize agent orchestrator for coordination
+    orchestrator = new AgentOrchestrator();
+
+    // Initialize chat manager with resilient client
     chatManager = new ChatParticipantManager(
-        mcpClient,
+        resilientMcpClient as any, // Use resilient wrapper
         conversationStore,
         contextAnalyzer,
         commandLineManager
     );
+
+    // Wire up event bus for inter-agent communication
+    eventBus.on('agent:message', (data) => {
+        orchestrator.handleAgentMessage(data);
+    });
+
+    // Apply rate limiting to chat manager
+    const originalCreateParticipant = chatManager.createChatParticipant.bind(chatManager);
+    chatManager.createChatParticipant = async (...args: any[]) => {
+        await rateLimiter.acquire();
+        return originalCreateParticipant(...args);
+    };
 }
 
 function registerChatParticipants(context: vscode.ExtensionContext) {

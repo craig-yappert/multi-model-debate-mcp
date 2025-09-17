@@ -122,14 +122,21 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "package": "vsce package",
     "publish": "vsce publish"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.8.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^18.15.0",
     "@types/vscode": "^1.74.0",
-    "typescript": "^4.9.5",
-    "@vscode/vsce": "^3.0.0"
+    "@vscode/vsce": "^3.0.0",
+    "jest": "^30.1.3",
+    "ts-jest": "^29.4.2",
+    "typescript": "^4.9.5"
   },
   "dependencies": {
     "child_process": "^1.0.2",

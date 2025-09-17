@@ -21,7 +21,10 @@
       "Bash(npm run package:*)",
       "Bash(code --install-extension:*)",
       "WebSearch",
-      "WebFetch(domain:marketplace.visualstudio.com)"
+      "WebFetch(domain:marketplace.visualstudio.com)",
+      "Read(//c/Users/cyapp/multi-agent-chat-extension/src/**)",
+      "Read(//c/Users/cyapp/multi-agent-chat-extension/**)",
+      "Bash(dir)"
     ],
     "deny": [],
     "ask": [],

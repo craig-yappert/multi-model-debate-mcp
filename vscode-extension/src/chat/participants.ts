@@ -4,9 +4,80 @@ import { ConversationStore, ConversationEntry, ConversationThread, ThreadMessage
 import { ContextAnalyzer, VSCodeContext } from './context-analyzer';
 import { CommandLineManager } from './command-line-manager';
 import { MattermostFallback } from './mattermost-fallback';
+import { AgentEventBus, AgentMessage } from '../core/event-bus';
+import { ResilientMCPClient } from '../core/resilient-mcp-client';
+
+export interface AgentStatus {
+    persona: string;
+    status: 'idle' | 'thinking' | 'responding' | 'collaborating' | 'error';
+    currentTask?: string;
+    startTime?: number;
+    responseTime?: number;
+    lastActivity: number;
+}
+
+export interface SharedContext {
+    id: string;
+    sourcePersona: string;
+    targetPersonas: string[];
+    contextType: 'insight' | 'finding' | 'recommendation' | 'warning' | 'collaboration';
+    title: string;
+    content: string;
+    metadata?: Record<string, any>;
+    timestamp: number;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+    expiresAt?: number;
+}
+
+export interface CrossAgentMemory {
+    sharedInsights: Map<string, SharedContext>;
+    collaborationHistory: Array<{
+        participants: string[];
+        topic: string;
+        outcome: string;
+        timestamp: number;
+    }>;
+    expertise: Map<string, string[]>; // persona -> areas of expertise
+}
+
+export interface QueuedRequest {
+    id: string;
+    persona: string;
+    request: vscode.ChatRequest;
+    context: vscode.ChatContext;
+    stream: vscode.ChatResponseStream;
+    token: vscode.CancellationToken;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+    timestamp: number;
+    resolve: (value: { metadata: { command: string } }) => void;
+    reject: (error: any) => void;
+}
 
 export class ChatParticipantManager {
     private mattermostFallback: MattermostFallback;
+    private activeConversations: Map<string, number> = new Map();
+    private readonly MAX_CONVERSATION_DEPTH = 5;
+
+    // Enhanced agent status tracking
+    private agentStatuses: Map<string, AgentStatus> = new Map();
+    private statusUpdateCallbacks: Set<(statuses: Map<string, AgentStatus>) => void> = new Set();
+
+    // Cross-agent context sharing
+    private crossAgentMemory: CrossAgentMemory = {
+        sharedInsights: new Map(),
+        collaborationHistory: [],
+        expertise: new Map()
+    };
+
+    // Priority queue system
+    private requestQueue: QueuedRequest[] = [];
+    private processingQueue = false;
+    private maxConcurrentRequests = 3;
+    private activeRequests = new Set<string>();
+
+    // Event-driven architecture components
+    private eventBus: AgentEventBus;
+    private resilientClient: ResilientMCPClient;
 
     constructor(
         private mcpClient: MCPClient,
@@ -17,6 +88,300 @@ export class ChatParticipantManager {
         // Initialize Mattermost fallback with current configuration
         const config = vscode.workspace.getConfiguration('multiModelDebate');
         this.mattermostFallback = new MattermostFallback(config);
+
+        // Initialize event-driven architecture
+        this.eventBus = AgentEventBus.getInstance();
+        this.resilientClient = new ResilientMCPClient(mcpClient, {
+            failureThreshold: config.get('failureThreshold', 5),
+            resetTimeout: config.get('resetTimeout', 60000),
+            maxRequestsPerMinute: config.get('maxRequestsPerMinute', 60),
+            maxQueueSize: config.get('maxQueueSize', 100)
+        });
+
+        // Initialize agent statuses and expertise
+        this.initializeAgentStatuses();
+        this.initializeAgentExpertise();
+        this.setupEventHandlers();
+    }
+
+    // Cross-agent context sharing methods
+    private initializeAgentExpertise(): void {
+        this.crossAgentMemory.expertise.set('claude-research', [
+            'analysis', 'research', 'documentation', 'strategic-thinking', 'problem-solving'
+        ]);
+        this.crossAgentMemory.expertise.set('kiro', [
+            'implementation', 'debugging', 'optimization', 'practical-solutions', 'execution'
+        ]);
+        this.crossAgentMemory.expertise.set('copilot', [
+            'code-review', 'best-practices', 'integration', 'quality-assurance', 'testing'
+        ]);
+        this.crossAgentMemory.expertise.set('team', [
+            'coordination', 'synthesis', 'collaboration', 'decision-making', 'project-management'
+        ]);
+    }
+
+    public shareContext(context: Omit<SharedContext, 'id' | 'timestamp'>): string {
+        const id = `ctx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const sharedContext: SharedContext = {
+            ...context,
+            id,
+            timestamp: Date.now()
+        };
+
+        this.crossAgentMemory.sharedInsights.set(id, sharedContext);
+
+        // Auto-expire low priority contexts after 1 hour
+        if (context.priority === 'low' && !context.expiresAt) {
+            sharedContext.expiresAt = Date.now() + (60 * 60 * 1000);
+        }
+
+        console.log(`Agent ${context.sourcePersona} shared context: ${context.title}`);
+        return id;
+    }
+
+    public getRelevantContext(persona: string, topic?: string): SharedContext[] {
+        const now = Date.now();
+        const relevantContexts: SharedContext[] = [];
+
+        this.crossAgentMemory.sharedInsights.forEach((context) => {
+            // Skip expired contexts
+            if (context.expiresAt && context.expiresAt < now) {
+                this.crossAgentMemory.sharedInsights.delete(context.id);
+                return;
+            }
+
+            // Include if targeting this persona or all personas
+            if (context.targetPersonas.includes(persona) ||
+                context.targetPersonas.includes('all')) {
+                relevantContexts.push(context);
+            }
+        });
+
+        // Sort by priority and recency
+        return relevantContexts.sort((a, b) => {
+            const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
+            const aPriority = priorityOrder[a.priority];
+            const bPriority = priorityOrder[b.priority];
+
+            if (aPriority !== bPriority) {
+                return bPriority - aPriority;
+            }
+            return b.timestamp - a.timestamp;
+        });
+    }
+
+    public addCollaborationOutcome(participants: string[], topic: string, outcome: string): void {
+        this.crossAgentMemory.collaborationHistory.push({
+            participants: [...participants],
+            topic,
+            outcome,
+            timestamp: Date.now()
+        });
+
+        // Keep only last 20 collaboration outcomes
+        if (this.crossAgentMemory.collaborationHistory.length > 20) {
+            this.crossAgentMemory.collaborationHistory =
+                this.crossAgentMemory.collaborationHistory.slice(-20);
+        }
+    }
+
+    public getAgentExpertise(persona: string): string[] {
+        return this.crossAgentMemory.expertise.get(persona) || [];
+    }
+
+    public findExpertFor(topic: string): string[] {
+        const experts: string[] = [];
+        const topicLower = topic.toLowerCase();
+
+        this.crossAgentMemory.expertise.forEach((expertise, persona) => {
+            if (expertise.some(area => topicLower.includes(area.toLowerCase()))) {
+                experts.push(persona);
+            }
+        });
+
+        return experts;
+    }
+
+    // Event-driven communication setup
+    private setupEventHandlers(): void {
+        // Subscribe each agent to their own message channel
+        const personas = ['claude-research', 'kiro', 'copilot', 'team'];
+
+        personas.forEach(persona => {
+            this.eventBus.subscribe(persona, (message: AgentMessage) => {
+                this.handleAgentMessage(persona, message);
+            });
+        });
+
+        // Listen to system events
+        this.eventBus.onAgentEvent((event) => {
+            this.handleSystemEvent(event);
+        });
+    }
+
+    private async handleAgentMessage(targetAgent: string, message: AgentMessage): Promise<void> {
+        console.log(`Agent ${targetAgent} received message from ${message.from}: ${message.type}`);
+
+        // Share relevant context based on message type
+        if (message.type === 'request' && message.conversationId) {
+            const relevantContext = this.getRelevantContext(targetAgent);
+            if (relevantContext.length > 0) {
+                console.log(`Sharing ${relevantContext.length} context items with ${targetAgent}`);
+
+                // Store context for this conversation
+                this.shareContext({
+                    sourcePersona: message.from,
+                    targetPersonas: [targetAgent],
+                    contextType: 'collaboration',
+                    title: `Context for conversation ${message.conversationId}`,
+                    content: JSON.stringify(relevantContext),
+                    priority: 'medium'
+                });
+            }
+        }
+    }
+
+    private handleSystemEvent(event: any): void {
+        console.log(`System event: ${event.type} from ${event.agent}`);
+
+        // Update agent status based on events
+        if (event.type === 'agent.complete') {
+            this.completeAgentTask(event.agent);
+        } else if (event.type === 'agent.error') {
+            this.updateAgentStatus(event.agent, 'error', event.data?.message);
+        }
+    }
+
+    // Enhanced collaboration with event-driven patterns
+    public async initiateCollaboration(
+        initiator: string,
+        participants: string[],
+        topic: string,
+        urgency: 'low' | 'medium' | 'high' | 'urgent' = 'medium'
+    ): Promise<string> {
+        const collaborationId = `collab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        // Share collaboration context
+        const contextId = this.shareContext({
+            sourcePersona: initiator,
+            targetPersonas: participants,
+            contextType: 'collaboration',
+            title: `Collaboration Request: ${topic}`,
+            content: `${initiator} is requesting collaboration on: ${topic}`,
+            priority: urgency
+        });
+
+        // Notify all participants via event bus
+        participants.forEach(participant => {
+            this.eventBus.emit({
+                from: initiator,
+                to: participant,
+                type: 'request',
+                content: {
+                    type: 'collaboration_invite',
+                    topic,
+                    collaborationId,
+                    contextId,
+                    urgency
+                },
+                timestamp: Date.now(),
+                conversationId: collaborationId
+            });
+        });
+
+        return collaborationId;
+    }
+
+    // Health monitoring for the resilient system
+    public getSystemHealth(): {
+        eventBus: any;
+        resilientClient: any;
+        requestQueue: number;
+        agentStatuses: Record<string, AgentStatus>;
+    } {
+        const statuses: Record<string, AgentStatus> = {};
+        this.agentStatuses.forEach((status, agent) => {
+            statuses[agent] = status;
+        });
+
+        return {
+            eventBus: this.eventBus.getStats(),
+            resilientClient: this.resilientClient.getHealth(),
+            requestQueue: this.requestQueue.length,
+            agentStatuses: statuses
+        };
+    }
+
+    // Agent status management methods
+    private initializeAgentStatuses(): void {
+        const personas = ['claude-research', 'kiro', 'copilot', 'team'];
+        personas.forEach(persona => {
+            this.agentStatuses.set(persona, {
+                persona,
+                status: 'idle',
+                lastActivity: Date.now()
+            });
+        });
+    }
+
+    private updateAgentStatus(persona: string, status: AgentStatus['status'], task?: string): void {
+        const currentStatus = this.agentStatuses.get(persona);
+        if (currentStatus) {
+            const updatedStatus: AgentStatus = {
+                ...currentStatus,
+                status,
+                currentTask: task,
+                startTime: status !== 'idle' ? Date.now() : undefined,
+                lastActivity: Date.now()
+            };
+            this.agentStatuses.set(persona, updatedStatus);
+            this.notifyStatusUpdate();
+        }
+    }
+
+    private completeAgentTask(persona: string, responseTime?: number): void {
+        const currentStatus = this.agentStatuses.get(persona);
+        if (currentStatus) {
+            const updatedStatus: AgentStatus = {
+                ...currentStatus,
+                status: 'idle',
+                currentTask: undefined,
+                responseTime,
+                lastActivity: Date.now()
+            };
+            this.agentStatuses.set(persona, updatedStatus);
+            this.notifyStatusUpdate();
+        }
+    }
+
+    private notifyStatusUpdate(): void {
+        this.statusUpdateCallbacks.forEach(callback => {
+            callback(new Map(this.agentStatuses));
+        });
+    }
+
+    // Public API for status monitoring
+    public getAgentStatuses(): Map<string, AgentStatus> {
+        return new Map(this.agentStatuses);
+    }
+
+    public onStatusUpdate(callback: (statuses: Map<string, AgentStatus>) => void): () => void {
+        this.statusUpdateCallbacks.add(callback);
+        return () => this.statusUpdateCallbacks.delete(callback);
+    }
+
+    public getStatusIndicator(persona: string): string {
+        const status = this.agentStatuses.get(persona);
+        if (!status) return '❓';
+
+        switch (status.status) {
+            case 'idle': return '💤';
+            case 'thinking': return '🤔';
+            case 'responding': return '💬';
+            case 'collaborating': return '🤝';
+            case 'error': return '⚠️';
+            default: return '🤖';
+        }
     }
 
     async handleChatRequest(
@@ -27,21 +392,40 @@ export class ChatParticipantManager {
         token: vscode.CancellationToken
     ): Promise<{ metadata: { command: string } }> {
 
-        // Note: VS Code's model selector in chat is for the built-in Copilot integration.
-        // Our extension uses specific personas (@claude-research, @kiro, @copilot, @team)
-        // that route to our MCP server, not the VS Code model selector.
-        // The model shown in VS Code chat UI doesn't affect our persona routing.
+        // Circuit breaker: prevent runaway conversations
+        const conversationKey = `${persona}-${request.prompt.substring(0, 50)}`;
+        const currentDepth = this.activeConversations.get(conversationKey) || 0;
 
-        // Special handling for team persona
-        if (persona === 'team') {
-            return this.handleTeamRequest(request, context, stream, token);
+        if (currentDepth >= this.MAX_CONVERSATION_DEPTH) {
+            stream.markdown(`**${this.getPersonaDisplayName(persona)}** ⚠️\n\nConversation depth limit reached to prevent circular communication. Please start a new conversation thread.`);
+            this.activeConversations.delete(conversationKey);
+            return { metadata: { command: 'conversation-limit-reached' } };
         }
 
-        const startTime = Date.now();
+        this.activeConversations.set(conversationKey, currentDepth + 1);
 
         try {
-            // Show thinking indicator with clarification about routing
-            stream.progress(`${this.getPersonaDisplayName(persona)} is analyzing your request...`);
+            // Update agent status to thinking
+            this.updateAgentStatus(persona, 'thinking', 'Analyzing request');
+
+            // Note: VS Code's model selector in chat is for the built-in Copilot integration.
+            // Our extension uses specific personas (@claude-research, @kiro, @copilot, @team)
+            // that route to our MCP server, not the VS Code model selector.
+            // The model shown in VS Code chat UI doesn't affect our persona routing.
+
+            // Special handling for team persona
+            if (persona === 'team') {
+                this.updateAgentStatus(persona, 'collaborating', 'Orchestrating team response');
+                const result = await this.handleTeamRequest(request, context, stream, token);
+                this.completeAgentTask(persona);
+                this.activeConversations.delete(conversationKey);
+                return result;
+            }
+
+            const startTime = Date.now();
+            // Show thinking indicator with status and clarification about routing
+            const statusIndicator = this.getStatusIndicator(persona);
+            stream.progress(`${this.getPersonaDisplayName(persona)} ${statusIndicator} is analyzing your request...`);
 
             // If user seems confused about model selection, clarify
             if (request.prompt.toLowerCase().includes('gpt') || request.prompt.toLowerCase().includes('model')) {
@@ -54,24 +438,41 @@ export class ChatParticipantManager {
             // Get conversation history for context
             const conversationHistory = await this.conversationStore.getRecentConversations(5);
 
+            // Get relevant cross-agent context
+            const sharedContext = this.getRelevantContext(persona, request.prompt);
+            const agentExpertise = this.getAgentExpertise(persona);
+            const suggestedExperts = this.findExpertFor(request.prompt);
+
             // Prepare the request with all context
             const enhancedRequest = {
                 message: request.prompt,
                 persona: persona,
                 vscode_context: codeContext,
                 conversation_history: conversationHistory,
+                shared_context: sharedContext,
+                agent_expertise: agentExpertise,
+                suggested_experts: suggestedExperts,
                 workspace: vscode.workspace.name,
                 timestamp: new Date().toISOString()
             };
 
+            this.updateAgentStatus(persona, 'thinking', 'Connecting to AI personas');
             stream.progress(`Connecting to AI personas...`);
 
             // Get AI response from MCP server
-            const aiResponse = await this.mcpClient.contribute(enhancedRequest);
+            // Get AI response using resilient client with circuit breaker and rate limiting
+            const aiResponse = await this.resilientClient.sendMessage(
+                JSON.stringify(enhancedRequest),
+                persona,
+                conversationKey
+            );
 
             if (!aiResponse || aiResponse.trim().length === 0) {
                 throw new Error('No response received from AI persona');
             }
+
+            // Update status to responding
+            this.updateAgentStatus(persona, 'responding', 'Generating response');
 
             // Log response length for debugging
             console.log(`Response from ${persona}: ${aiResponse.length} characters`);
@@ -82,10 +483,12 @@ export class ChatParticipantManager {
             const commandSuggestions = this.extractCommandSuggestions(aiResponse);
 
             // Stream the response
-            stream.progress(`${this.getPersonaDisplayName(persona)} is responding...`);
+            const responseStatusIndicator = this.getStatusIndicator(persona);
+            stream.progress(`${this.getPersonaDisplayName(persona)} ${responseStatusIndicator} is responding...`);
 
-            // Add persona header with icon
-            stream.markdown(`**${this.getPersonaDisplayName(persona)}** ${this.getPersonaIcon(persona)}\n\n`);
+            // Add persona header with live status icon
+            const currentStatusIndicator = this.getStatusIndicator(persona);
+            stream.markdown(`**${this.getPersonaDisplayName(persona)}** ${currentStatusIndicator}\n\n`);
 
             // Stream the main response
             await this.streamResponse(stream, aiResponse);
@@ -114,10 +517,17 @@ export class ChatParticipantManager {
                 isDebugging: codeContext.debugging?.isActive || false
             };
 
+            // Complete agent task and clean up conversation tracking
+            this.completeAgentTask(persona, Date.now() - startTime);
+            this.activeConversations.delete(conversationKey);
             return { metadata };
 
         } catch (error) {
             console.error(`Error in ${persona} chat participant:`, error);
+
+            // Update agent status to error and clean up conversation tracking
+            this.updateAgentStatus(persona, 'error', `Error: ${error}`);
+            this.activeConversations.delete(conversationKey);
 
             // Fallback to Mattermost or error response
             const fallbackResponse = await this.handleFallbackResponse(persona, request.prompt, error);
@@ -363,7 +773,11 @@ export class ChatParticipantManager {
                 };
 
                 // Get response from current AI
-                const response = await this.mcpClient.sendAIToAIMessage(aiRequest);
+                const response = await this.resilientClient.sendMessage(
+                    JSON.stringify(aiRequest),
+                    currentSpeaker,
+                    thread.id
+                );
 
                 // Display the response
                 stream.markdown(`**@${currentSpeaker}** ${this.getPersonaIcon(currentSpeaker)}\n\n`);
@@ -448,11 +862,18 @@ export class ChatParticipantManager {
     private shouldConcludeConversation(response: string, turn: number): boolean {
         // Simple heuristics to detect conclusion
         const conclusionWords = ['conclusion', 'finally', 'in summary', 'to summarize', 'overall'];
-        const hasConclusion = conclusionWords.some(word => 
+        const hasConclusion = conclusionWords.some(word =>
             response.toLowerCase().includes(word)
         );
-        
-        return turn >= 3 && hasConclusion;
+
+        // Check for circular communication patterns
+        const circularPatterns = ['mentioned you in their response', 'inter-agent communication', 'original message'];
+        const isCircular = circularPatterns.some(pattern =>
+            response.toLowerCase().includes(pattern.toLowerCase())
+        );
+
+        // Conclude if we detect circular communication or reach turn limit
+        return turn >= 3 && (hasConclusion || isCircular) || turn >= 5;
     }
 
     private async generateSynthesis(thread: ConversationThread, stream: vscode.ChatResponseStream): Promise<void> {
@@ -472,7 +893,11 @@ export class ChatParticipantManager {
                 threadId: thread.id
             };
 
-            const synthesis = await this.mcpClient.sendAIToAIMessage(synthesisRequest);
+            const synthesis = await this.resilientClient.sendMessage(
+                JSON.stringify(synthesisRequest),
+                'claude-research',
+                thread.id
+            );
 
             stream.markdown(`**🎯 Conversation Synthesis**\n\n`);
             stream.markdown(synthesis);
